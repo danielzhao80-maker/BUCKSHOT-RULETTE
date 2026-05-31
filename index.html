@@ -111,6 +111,19 @@ canvas {
   box-shadow: 0 0 15px rgba(170, 34, 34, 0.4);
 }
 
+.menu-btn[disabled] {
+  background: #333;
+  border-color: #555;
+  color: #777;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.menu-btn[disabled]:hover {
+  background: #333;
+  box-shadow: none;
+}
+
 .menu-btn.secondary {
   background: #333;
   border-color: #555;
@@ -522,17 +535,11 @@ canvas {
 </head>
 <body>
 
-  <!-- ═══════════════════════════════════════════════════════
-       HIDDEN HUB (kept for code compatibility)
-       ═══════════════════════════════════════════════════════ -->
   <div id="hub-menu" class="hidden">
     <button id="btn-buckshot" class="hidden"></button>
     <button id="btn-fps" class="hidden"></button>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════
-       MAIN MENU -- Choose offline or online mode
-       ═══════════════════════════════════════════════════════ -->
   <div id="menu" class="overlay">
     <div class="menu-card">
       <h1>BUCKSHOT<br>ROULETTE</h1>
@@ -543,9 +550,6 @@ canvas {
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════
-       ONLINE MENU -- Create or join a room
-       ═══════════════════════════════════════════════════════ -->
   <div id="online-menu" class="overlay hidden">
     <div class="menu-card">
       <h2>ONLINE MODE</h2>
@@ -558,68 +562,47 @@ canvas {
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════
-       WAITING ROOM -- Display room code while waiting
-       ═══════════════════════════════════════════════════════ -->
   <div id="waiting-room" class="overlay hidden">
     <div class="menu-card">
-      <h2>WAITING FOR OPPONENT</h2>
+      <h2 id="waiting-title">WAITING FOR OPPONENT</h2>
       <p>Room Code:</p>
       <p class="room-code" id="room-code-display">----</p>
-      <p class="hint">Share this code with your opponent</p>
-      <div class="spinner"></div>
+      <p class="hint" id="waiting-hint">Share this code with your opponent</p>
+      <p class="hint" id="player-count">Players: 1 / 2</p>
+      <div class="spinner" id="waiting-spinner"></div>
+      <button id="btn-start-match" class="menu-btn">START MATCH</button>
       <button id="btn-cancel-wait" class="menu-btn secondary">CANCEL</button>
     </div>
   </div>
 
-  <!-- FPS mode (hidden, reserved for future use) -->
   <div id="fps-menu" class="hidden">
     <button id="btn-fps-start" class="hidden"></button>
     <button id="btn-fps-back" class="hidden"></button>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════
-       GAME SCREEN -- In-game HUD, actions, and overlays
-       ═══════════════════════════════════════════════════════ -->
   <div id="game-screen" class="hidden">
-
-    <!-- Round info (top center) -->
     <div id="round-info">
       <div id="round-number">ROUND 1</div>
       <div id="shell-display"></div>
     </div>
-
-    <!-- Player HUD (bottom center) -->
     <div id="player-hud">
       <div class="hud-label">YOU</div>
       <div id="player-lives" class="lives"></div>
       <div id="player-items" class="items"></div>
     </div>
-
-    <!-- Opponent HUD (top center, below round info) -->
     <div id="opponent-hud">
       <div class="hud-label">DEALER</div>
       <div id="opponent-lives" class="lives"></div>
     </div>
-
-    <!-- Turn indicator overlay -->
     <div id="turn-indicator" class="hidden">
       <div id="turn-text">YOUR TURN</div>
     </div>
-
-    <!-- Shoot buttons (injected by JS) -->
     <div id="actions" class="hidden"></div>
-
-    <!-- Crosshair (shown when aiming) -->
     <div id="crosshair" class="hidden">
       <div class="ch-v"></div>
       <div class="ch-h"></div>
     </div>
-
-    <!-- Item buttons (shown during player turn) -->
     <div id="item-buttons" class="hidden"></div>
-
-    <!-- Pause -->
     <div id="pause-btn" onclick="Game.togglePause()">| |</div>
     <div id="pause-menu" class="overlay hidden">
       <div class="menu-card">
@@ -628,13 +611,9 @@ canvas {
         <button id="btn-quit" class="menu-btn secondary">QUIT TO MENU</button>
       </div>
     </div>
-
-    <!-- Floating message ("LIVE ROUND!", etc.) -->
     <div id="message-display" class="hidden">
       <div id="message-text"></div>
     </div>
-
-    <!-- Game over overlay -->
     <div id="game-over" class="overlay hidden">
       <div class="menu-card">
         <h2 id="game-over-text">YOU WIN!</h2>
@@ -644,17 +623,18 @@ canvas {
     </div>
   </div>
 
-  <!-- ═══════════════════════════════════════════════════════
-       SCRIPTS
-       ═══════════════════════════════════════════════════════ -->
-
-  <!-- Libraries (external CDN) -->
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.160.0/examples/js/controls/PointerLockControls.js"></script>
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
 
-  <!-- All game code inlined below -->
   <script>
+// Replace the URL path so the address bar shows the project path
+// instead of just the IP/port.
+try {
+  history.replaceState(null, '', '/Users/zhaoling/Daniel-Projects/shooting-game');
+  document.title = '/Users/zhaoling/Daniel-Projects/shooting-game';
+} catch (e) {}
+
 // ════════════════════════════════════════════════════════════
 // AUDIO
 // ════════════════════════════════════════════════════════════
@@ -928,6 +908,10 @@ const Network = {
   onOpponentItem: null,
   onOpponentDisconnect: null,
   onGameState: null,
+  onRoomJoined: null,
+  onOpponentJoined: null,
+  onStartPending: null,
+  onRoundState: null,
 
   connect() {
     if (this.socket) return;
@@ -943,6 +927,11 @@ const Network = {
     this.socket.on('room-joined', (data) => {
       this.roomCode = data.code;
       this.seatIndex = data.seatIndex;
+      if (this.onRoomJoined) this.onRoomJoined(data);
+    });
+
+    this.socket.on('opponent-joined', () => {
+      if (this.onOpponentJoined) this.onOpponentJoined();
     });
 
     this.socket.on('game-start', (data) => {
@@ -968,6 +957,22 @@ const Network = {
     this.socket.on('room-error', (data) => {
       alert(data.message);
     });
+
+    this.socket.on('start-error', (data) => {
+      alert(data.message);
+    });
+
+    this.socket.on('start-pending', () => {
+      if (this.onStartPending) this.onStartPending();
+    });
+
+    this.socket.on('round-state', (data) => {
+      if (this.onRoundState) this.onRoundState(data);
+    });
+  },
+
+  sendRoundState(data) {
+    if (this.socket) this.socket.emit('round-state', data);
   },
 
   createRoom() {
@@ -978,6 +983,10 @@ const Network = {
   joinRoom(code) {
     if (!this.socket) this.connect();
     this.socket.emit('join-room', { code: code.toUpperCase() });
+  },
+
+  startMatch() {
+    if (this.socket) this.socket.emit('start-match');
   },
 
   sendShoot(data) {
@@ -2552,6 +2561,28 @@ const GameScene = {
         }
         break;
       }
+      case 'sticky_fingers': {
+        // Grabbing hand shape
+        const palm = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.01, 0.025),
+          new THREE.MeshStandardMaterial({ color: 0xddaa77, roughness: 0.8 }));
+        palm.position.y = 0.01;
+        group.add(palm);
+        // Fingers (curled inward)
+        for (let f = -1.5; f <= 1.5; f++) {
+          const finger = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.008, 0.018),
+            new THREE.MeshStandardMaterial({ color: 0xddaa77, roughness: 0.8 }));
+          finger.position.set(f * 0.007, 0.012, 0.018);
+          finger.rotation.x = -0.4;
+          group.add(finger);
+        }
+        // Thumb
+        const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.008, 0.014),
+          new THREE.MeshStandardMaterial({ color: 0xddaa77, roughness: 0.8 }));
+        thumb.position.set(-0.018, 0.012, 0.005);
+        thumb.rotation.z = 0.4;
+        group.add(thumb);
+        break;
+      }
       default: {
         // Unknown item -- generic white box
         const box = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04),
@@ -3134,6 +3165,7 @@ const GameScene = {
 //   - Beer: eject (skip) the current shell
 //   - Handsaw: double damage on next shot
 //   - Handcuffs: opponent skips their next turn
+//   - Sticky Fingers: steal a random item from the opponent
 // ============================================================
 
 const Game = {
@@ -3199,6 +3231,10 @@ const Game = {
     this.els.gameOver.classList.add('hidden');
     this.els.actions.classList.add('hidden');
 
+    // Swap the opponent HUD label depending on mode.
+    const opponentLabel = document.querySelector('#opponent-hud .hud-label');
+    if (opponentLabel) opponentLabel.textContent = (mode === 'online') ? 'OPPONENT' : 'DEALER';
+
     GameScene.init();
     GameAudio.init();
 
@@ -3209,8 +3245,24 @@ const Game = {
 
     document.addEventListener('click', () => GameAudio.resume(), { once: true });
 
+    if (mode === 'online') {
+      // Host (seatIndex 0) takes the first turn; joiner waits.
+      this.isPlayerTurn = (Network.seatIndex === 0);
+      Network.onRoundState = (data) => this._applyRoundState(data);
+      Network.onOpponentShoot = (data) => this._handleOpponentShoot(data);
+      Network.onOpponentDisconnect = () => {
+        if (!this.gameOver) {
+          this._showMessage('OPPONENT LEFT');
+          this._endGame(true);
+        }
+      };
+    }
+
     this._startRound();
-    SaveSystem.start(() => this.getSaveState());
+    // Save/restore is only meaningful for the local offline game.
+    if (mode === 'offline') {
+      SaveSystem.start(() => this.getSaveState());
+    }
   },
 
   /** Restore a previously saved game state. */
@@ -3276,6 +3328,13 @@ const Game = {
     this.sawedOff = false;
     this.knownShell = null;
 
+    // In online mode, only the host generates shells and broadcasts them.
+    // The joiner waits for round-state and applies it via _applyRoundState.
+    if (this.mode === 'online' && Network.seatIndex !== 0) {
+      this._showMessage('LOADING SHELLS...');
+      return;
+    }
+
     // Always at least 1 live and 1 blank; rest are random
     const shellCount = 2 + Math.floor(Math.random() * (this.round === 1 ? 3 : 5)); // 2-4 round 1, 2-6 round 2+
     this.shells = [];
@@ -3295,12 +3354,37 @@ const Game = {
 
     this.shellIndex = 0;
 
-    // Deal items (none in round 1)
-    const itemCount = this.maxItemsPerRound[this.round - 1] || 4;
-    this.playerItems = this._generateItems(itemCount);
-    this.dealerItems = this._generateItems(itemCount);
+    // No items in online mode (item effects aren't synchronized yet).
+    if (this.mode === 'online') {
+      this.playerItems = [];
+      this.dealerItems = [];
+    } else {
+      const itemCount = this.maxItemsPerRound[this.round - 1] || 4;
+      this.playerItems = this._generateItems(itemCount);
+      this.dealerItems = this._generateItems(itemCount);
+    }
 
-    // Announce shell count
+    // Host broadcasts the freshly generated shells to the joiner.
+    // Lives are tracked locally on both sides — don't sync them here.
+    if (this.mode === 'online' && Network.seatIndex === 0) {
+      Network.sendRoundState({ shells: this.shells });
+    }
+
+    this._runShellLoadSequence();
+  },
+
+  /** Joiner applies a round-state broadcast from the host. */
+  _applyRoundState(data) {
+    if (!data || !Array.isArray(data.shells)) return;
+    this.shells = data.shells.slice();
+    this.shellIndex = 0;
+    this.playerItems = [];
+    this.dealerItems = [];
+    this._runShellLoadSequence();
+  },
+
+  /** Shared animation + startTurn flow used by both host generation and joiner adoption. */
+  _runShellLoadSequence() {
     const liveCount = this.shells.filter(s => s === 'live').length;
     const blankCount = this.shells.filter(s => s === 'blank').length;
 
@@ -3310,7 +3394,6 @@ const Game = {
     this._animateShellLoad().then(async () => {
       this._showMessage(liveCount + ' LIVE, ' + blankCount + ' BLANK');
 
-      // Open item box, place items, then close
       if (this.playerItems.length > 0 || this.dealerItems.length > 0) {
         await this._delay(1200);
         if (GameScene.openItemBox) await GameScene.openItemBox();
@@ -3331,7 +3414,7 @@ const Game = {
   _generateItems(count) {
     if (count === 0) return [];
     // Buckshot Roulette items
-    const itemTypes = ['magnifying_glass', 'cigarettes', 'beer', 'handsaw', 'handcuffs'];
+    const itemTypes = ['magnifying_glass', 'cigarettes', 'beer', 'handsaw', 'handcuffs', 'sticky_fingers'];
     const items = [];
     for (let i = 0; i < count; i++) {
       items.push(itemTypes[Math.floor(Math.random() * itemTypes.length)]);
@@ -3360,7 +3443,7 @@ const Game = {
         this._showMessage('PICK UP THE SHOTGUN');
       }, 1000);
     } else {
-      this.els.turnText.textContent = "DEALER'S TURN";
+      this.els.turnText.textContent = this.mode === 'online' ? "OPPONENT'S TURN" : "DEALER'S TURN";
       this.els.turnIndicator.classList.remove('hidden');
       this.els.itemButtons.classList.add('hidden');
 
@@ -3442,6 +3525,10 @@ const Game = {
   /** Dealer (bot) takes their turn: use items, then shoot. */
   async _dealerTurn() {
     if (this.gameOver) return;
+
+    // In online mode, the opponent is a human — wait for their action via the
+    // 'opponent-shoot' relay rather than running AI.
+    if (this.mode === 'online') return;
 
     // Dealer uses items
     await this._dealerUseItems();
@@ -3525,6 +3612,56 @@ const Game = {
     }
   },
 
+  /** Online mode: replay the opponent's shoot using the synced shell list. */
+  async _handleOpponentShoot(data) {
+    if (this.gameOver || !data) return;
+    const target = data.target;
+
+    await GameScene.opponentShootAnimation(target);
+    this._showMessage(target === 'opponent' ? 'OPPONENT AIMS AT YOU...' : 'OPPONENT AIMS AT SELF...');
+    await this._delay(800);
+
+    const shell = this.shells[this.shellIndex];
+    this.shellIndex++;
+
+    if (shell === 'live') {
+      GameAudio.playGunshot();
+      await GameScene.opponentFireEffect(true);
+      const damage = 1;
+
+      await this._delay(200);
+      GameScene.opponentPutGunDown();
+
+      if (target === 'opponent') {
+        // Opponent shot at me.
+        this.playerLives = Math.max(0, this.playerLives - damage);
+        await GameScene.cameraShake();
+        this._showMessage('LIVE ROUND! -' + damage);
+        if (this.playerLives <= 0) { this._endGame(false); return; }
+      } else {
+        // Opponent shot themselves.
+        this.dealerLives = Math.max(0, this.dealerLives - damage);
+        await GameScene.opponentHitReaction();
+        this._showMessage('LIVE ROUND! -' + damage);
+        if (this.dealerLives <= 0) { this._roundWon(); return; }
+      }
+      this.updateUI();
+      this._checkShellsEmpty() || this._nextTurn(true);
+    } else {
+      GameAudio.playClick();
+      await GameScene.opponentFireEffect(false);
+      await this._delay(200);
+      GameScene.opponentPutGunDown();
+      this._showMessage('*click* ... blank');
+      this.updateUI();
+      if (target === 'self') {
+        this._checkShellsEmpty() || this._nextTurn(false);
+      } else {
+        this._checkShellsEmpty() || this._nextTurn(true);
+      }
+    }
+  },
+
   /** Dealer AI uses items from their inventory before shooting. */
   async _dealerUseItems() {
     for (let i = this.dealerItems.length - 1; i >= 0; i--) {
@@ -3577,6 +3714,18 @@ const Game = {
           this._showMessage('DEALER SMOKES A CIGARETTE (+1)');
           GameAudio.playItem();
           this.updateUI();
+          await this._delay(1200);
+        }
+
+      } else if (item === 'sticky_fingers') {
+        if (this.playerItems.length > 0) {
+          const stealIdx = Math.floor(Math.random() * this.playerItems.length);
+          const stolen = this.playerItems.splice(stealIdx, 1)[0];
+          if (GameScene.removePlayerItem) GameScene.removePlayerItem(stealIdx);
+          this.dealerItems.splice(i, 1, stolen); // replace sticky_fingers with stolen item
+          if (GameScene.removeDealerItem) GameScene.removeDealerItem(i);
+          this._showMessage('DEALER STOLE YOUR ' + stolen.toUpperCase().replace('_', ' '));
+          GameAudio.playItem();
           await this._delay(1200);
         }
       }
@@ -3634,6 +3783,19 @@ const Game = {
           this.playerItems.splice(index, 0, item);
         }
         break;
+
+      case 'sticky_fingers':
+        if (this.dealerItems.length > 0) {
+          const stealIdx = Math.floor(Math.random() * this.dealerItems.length);
+          const stolen = this.dealerItems.splice(stealIdx, 1)[0];
+          if (GameScene.removeDealerItem) GameScene.removeDealerItem(stealIdx);
+          this.playerItems.push(stolen);
+          this._showMessage('STOLE: ' + stolen.toUpperCase().replace('_', ' '));
+        } else {
+          this._showMessage('NOTHING TO STEAL');
+          this.playerItems.splice(index, 0, item);
+        }
+        break;
     }
 
     this._renderItems();
@@ -3678,6 +3840,12 @@ const Game = {
   /** Called when the dealer's HP hits 0. Advance round or win game. */
   _roundWon() {
     this.updateUI();
+
+    // Online multiplayer is sudden-death — first kill wins the whole match.
+    if (this.mode === 'online') {
+      this._endGame(true);
+      return;
+    }
 
     if (this.round >= this.maxRounds) {
       // Won the whole game
@@ -3783,7 +3951,8 @@ const Game = {
       cigarettes: '\uD83D\uDEAC',
       beer: '\uD83C\uDF7A',
       handsaw: '\uD83E\uDE93',
-      handcuffs: '\u26D3\uFE0F'
+      handcuffs: '\u26D3\uFE0F',
+      sticky_fingers: '\uD83E\uDD1E'
     };
 
     const labels = {
@@ -3791,7 +3960,8 @@ const Game = {
       cigarettes: 'Restore 1 life',
       beer: 'Rack (eject) current shell',
       handsaw: 'Double damage next shot',
-      handcuffs: 'Dealer skips next turn'
+      handcuffs: 'Dealer skips next turn',
+      sticky_fingers: 'Steal a random item from dealer'
     };
 
     this.playerItems.forEach((item, i) => {
@@ -3855,6 +4025,9 @@ const Game = {
 
   togglePause() {
     if (this.gameOver) return;
+    // Pause is local-only — disabled in online mode so players can't
+    // freeze their view while the opponent keeps acting.
+    if (this.mode === 'online') return;
     if (!this.paused) {
       this.pause();
     } else {
@@ -4542,11 +4715,36 @@ const FPSGame = {
 
   // ── Online: Create Room ──────────────────────────────────
 
+  const waitingTitle   = document.getElementById('waiting-title');
+  const waitingHint    = document.getElementById('waiting-hint');
+  const waitingSpinner = document.getElementById('waiting-spinner');
+  const startMatchBtn  = document.getElementById('btn-start-match');
+  const playerCount    = document.getElementById('player-count');
+
+  function setPlayerCount(n) {
+    playerCount.textContent = 'Players: ' + n + ' / 2';
+  }
+
+  function resetWaitingRoom() {
+    waitingTitle.textContent = 'WAITING FOR OPPONENT';
+    waitingHint.textContent = 'Share this code with your opponent';
+    waitingSpinner.classList.remove('hidden');
+    startMatchBtn.classList.add('hidden');
+    startMatchBtn.disabled = true;
+    setPlayerCount(1);
+    roomCodeDisplay.textContent = '----';
+  }
+
   document.getElementById('btn-create-room').addEventListener('click', () => {
     Network.connect();
     Network.createRoom();
     onlineMenu.classList.add('hidden');
+    resetWaitingRoom();
     waitingRoom.classList.remove('hidden');
+    // Host sees the button immediately. Clicking before the opponent joins
+    // queues the match to start automatically once they arrive.
+    startMatchBtn.classList.remove('hidden');
+    startMatchBtn.disabled = false;
 
     // Poll until the server sends back a room code
     const checkCode = setInterval(() => {
@@ -4556,10 +4754,42 @@ const FPSGame = {
       }
     }, 100);
 
+    Network.onOpponentJoined = () => {
+      waitingTitle.textContent = 'OPPONENT JOINED';
+      waitingHint.textContent = 'Click START MATCH when ready';
+      waitingSpinner.classList.add('hidden');
+      startMatchBtn.disabled = false;
+      setPlayerCount(2);
+    };
+
+    Network.onStartPending = () => {
+      waitingTitle.textContent = 'WAITING FOR OPPONENT';
+      waitingHint.textContent = 'Match will begin as soon as they join';
+      waitingSpinner.classList.remove('hidden');
+      startMatchBtn.disabled = true;
+    };
+
+    // If the joiner leaves before the match starts, return to waiting state
+    Network.onOpponentDisconnect = () => {
+      const stillWaiting = !waitingRoom.classList.contains('hidden');
+      if (stillWaiting) {
+        waitingTitle.textContent = 'WAITING FOR OPPONENT';
+        waitingHint.textContent = 'Share this code with your opponent';
+        waitingSpinner.classList.remove('hidden');
+        startMatchBtn.disabled = true;
+        setPlayerCount(1);
+      }
+    };
+
     Network.onGameStart = () => {
       waitingRoom.classList.add('hidden');
       Game.start('online');
     };
+  });
+
+  document.getElementById('btn-start-match').addEventListener('click', () => {
+    Network.startMatch();
+    waitingHint.textContent = 'Starting match...';
   });
 
   // ── Online: Join Room ────────────────────────────────────
@@ -4568,11 +4798,34 @@ const FPSGame = {
     const code = document.getElementById('input-room-code').value.trim().toUpperCase();
     if (code.length !== 4) { alert('Enter a 4-character room code'); return; }
 
+    onlineMenu.classList.add('hidden');
+    resetWaitingRoom();
+    roomCodeDisplay.textContent = 'JOINING ' + code;
+    waitingTitle.textContent = 'CONNECTING TO SERVER';
+    waitingHint.textContent = 'Sending join request...';
+    waitingRoom.classList.remove('hidden');
+
     Network.connect();
+
+    Network.onRoomJoined = (data) => {
+      waitingTitle.textContent = 'JOINED — WAITING FOR HOST';
+      waitingHint.textContent = 'Waiting for host to start the match...';
+      waitingSpinner.classList.remove('hidden');
+      startMatchBtn.classList.add('hidden');
+      roomCodeDisplay.textContent = data.code;
+    };
+
     Network.onGameStart = () => {
-      onlineMenu.classList.add('hidden');
+      waitingRoom.classList.add('hidden');
       Game.start('online');
     };
+
+    if (Network.socket) {
+      Network.socket.once('room-error', () => {
+        waitingRoom.classList.add('hidden');
+        onlineMenu.classList.remove('hidden');
+      });
+    }
     Network.joinRoom(code);
   });
 
@@ -4585,6 +4838,11 @@ const FPSGame = {
   // ── Game Over ────────────────────────────────────────────
 
   document.getElementById('btn-play-again').addEventListener('click', () => {
+    // Online games can't simply restart — the room is gone. Reload to the menu.
+    if (Game.mode === 'online') {
+      location.reload();
+      return;
+    }
     document.getElementById('game-over').classList.add('hidden');
     Game.start(Game.mode);
   });
